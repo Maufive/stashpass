@@ -34,6 +34,8 @@ pub fn handle_add_password<R: BufRead, W: Write>(
                     writer,
                     "This service already exists, please try again with a unique service name"
                 );
+
+                return;
             }
 
             let username = read_terminal_input(reader, writer, Some("Enter username: "));
