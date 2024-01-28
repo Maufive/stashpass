@@ -9,6 +9,70 @@ use crate::{ store::PasswordStore, password::{ Password, PasswordEntry } };
 
 use self::io::read_terminal_input;
 
+fn read_username<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> String {
+    read_terminal_input(reader, writer, Some("Enter username: "))
+}
+
+fn read_password<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> String {
+    rpassword::prompt_password("Enter password: ").unwrap()
+}
+
+fn read_service_name<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    store: &mut PasswordStore
+) -> String {
+    loop {
+        let service = read_terminal_input(reader, writer, Some("Enter service name: "));
+        if !store.check_for_duplicate_service_entry(&service) {
+            return service;
+        }
+        print(writer, "This service already exists, please try again with a unique service name");
+    }
+}
+
+fn read_and_confirm_password<W: Write>(writer: &mut W) -> Option<String> {
+    loop {
+        let password = rpassword::prompt_password("Enter password: ").unwrap();
+        let verify_password = rpassword::prompt_password("Please verify password: ").unwrap();
+
+        if password == verify_password {
+            return Some(password);
+        }
+
+        print(writer, "Unfortunately the entered passwords did not match, please try again");
+    }
+}
+
+fn enter_password_strategy<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    store: &mut PasswordStore
+) {
+    let service = read_service_name(reader, writer, store);
+    let username = read_username(reader, writer);
+    let password = read_and_confirm_password(writer);
+
+    if let Some(password) = password {
+        let entry = PasswordEntry::new(service, username, password);
+        store.add_and_save_entry(entry);
+    } else {
+        print(writer, "Unfortunately the entered passwords did not match, please try again")
+    }
+}
+
+fn generate_password_strategy<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    store: &mut PasswordStore
+) {
+    let service = read_service_name(reader, writer, store);
+    let username = read_username(reader, writer);
+    let password = Password::generate();
+    let entry = PasswordEntry::new(service, username, password);
+    store.add_and_save_entry(entry);
+}
+
 pub fn handle_add_password<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -24,39 +88,8 @@ pub fn handle_add_password<R: BufRead, W: Write>(
     let input = read_terminal_input(reader, writer, None);
 
     match input.as_str() {
-        "1" | "generate" => {
-            let service = read_terminal_input(reader, writer, Some("Enter service name: "));
-
-            let is_duplicate = store.check_for_duplicate_service_entry(&service);
-
-            if is_duplicate {
-                print(
-                    writer,
-                    "This service already exists, please try again with a unique service name"
-                );
-
-                return;
-            }
-
-            let username = read_terminal_input(reader, writer, Some("Enter username: "));
-            let password = Password::generate();
-            let entry = PasswordEntry::new(service, username, password);
-            // Save entry to store
-            store.add_and_save_entry(entry);
-        }
-        "2" | "enter" => {
-            let service = read_terminal_input(reader, writer, Some("Enter service name: "));
-            let username = read_terminal_input(reader, writer, Some("Enter username: "));
-            let password = rpassword::prompt_password("Enter password: ").unwrap();
-            let verify_password = rpassword::prompt_password("Please verify password: ").unwrap();
-
-            if password == verify_password {
-                let entry = PasswordEntry::new(service, username, password);
-                store.add_and_save_entry(entry);
-            } else {
-                print(writer, "Unfortunately the entered passwords did not match, please try again")
-            }
-        }
+        "1" | "generate" => generate_password_strategy(reader, writer, store),
+        "2" | "enter" => enter_password_strategy(reader, writer, store),
         _ => print(writer, "Invalid command"),
     }
 }

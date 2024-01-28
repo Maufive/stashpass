@@ -1,6 +1,6 @@
 use std::io::{ Write, BufRead, stdout };
 
-pub fn print<W: Write>(writer: &mut W, message: &str) {
+pub fn print<W: Write + ?Sized>(writer: &mut W, message: &str) {
     writeln!(writer, "{message}").unwrap_or_else(|_| println!("{message}"));
 }
 
