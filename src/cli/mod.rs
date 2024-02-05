@@ -262,3 +262,8 @@ pub fn handle_update_service<R: BufRead, W: Write>(
         }
     }
 }
+
+pub fn handle_list_services(store: &PasswordStore) {
+    println!("Listing all services:");
+    store.list_all();
+}

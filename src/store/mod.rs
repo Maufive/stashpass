@@ -69,6 +69,20 @@ impl PasswordStore {
         self.file_path.clone()
     }
 
+    /**
+     * List all passwords
+     * The method will loop over the in-memory store and print the service and username for each entry.
+     */
+    pub fn list_all(&self) {
+        for (service, entry) in self.passwords.iter() {
+            println!("Service: {}, Username: {}", service, entry.username);
+        }
+    }
+
+    /**
+     * Check for duplicate service entry
+     * The method will loop over the in-memory store and check if the service already exists.
+     */
     pub fn check_for_duplicate_service_entry(&self, service: &str) -> bool {
         let is_duplicate = self.passwords.iter().any(|(_, e)| e.service == service);
 

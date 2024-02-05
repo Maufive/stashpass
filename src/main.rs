@@ -1,4 +1,4 @@
-use password_manager::cli::io::print;
+use password_manager::cli::{ io::print, handle_list_services };
 use std::{ io::{ Write, BufRead }, path::PathBuf };
 
 use password_manager::{
@@ -21,28 +21,6 @@ use password_manager::{
  * - Delete password
  * - List all passwords
  *
- * Passwords will be stored in a file in the following format:
- * - Each line will be a password entry
- * - Each line will be in the following format:
- * - <name> <username> <password>
- *      - name: name of the password entry
- *      - username: username for the password entry
- *      - password: password for the password entry
- *
- * Example:
- * - github johndoe password123
- *
- *
- * MVP will not use encryption and decryption to store passwords
- * First version will just be getting the functionality working to store passwords
- * using a file and input from the user via the command line. After that we can
- * add encryption and decryption to the passwords.  We can also add a GUI to the
- * application with Ratatui (?).
- *
- * Features to add:
- * - Encryption and decryption of passwords
- * - Master password
- * - GUI
  */
 
 /**
@@ -58,6 +36,7 @@ fn run_dialog<R: BufRead, W: Write>(reader: &mut R, writer: &mut W, store: &mut 
             format!("[{}] -> {} password\n", "1", "Add"),
             format!("[{}] -> {} password\n", "2", "Get"),
             format!("[{}] -> {} service\n", "3", "Update"),
+            format!("[{}] -> {} all services\n", "4", "List"),
         ];
 
         let message = message.join("");
@@ -73,6 +52,9 @@ fn run_dialog<R: BufRead, W: Write>(reader: &mut R, writer: &mut W, store: &mut 
             }
             "3" | "update" => {
                 handle_update_service(reader, writer, store);
+            }
+            "4" | "list" => {
+                handle_list_services(store);
             }
             _ => {
                 print(writer, "Invalid command");
