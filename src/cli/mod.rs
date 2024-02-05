@@ -84,7 +84,7 @@ fn handle_enter_password<R: BufRead, W: Write>(
 
     if let Some(password) = password {
         let entry = PasswordEntry::new(service, username, password);
-        store.add_and_save_entry(entry);
+        store.add_and_save_entry(entry).unwrap();
     } else {
         print(writer, "Unfortunately the entered passwords did not match, please try again")
     }
@@ -107,7 +107,8 @@ fn handle_generate_password<R: BufRead, W: Write>(
     let username = read_username(reader, writer);
     let password = Password::generate();
     let entry = PasswordEntry::new(service, username, password);
-    store.add_and_save_entry(entry);
+
+    store.add_and_save_entry(entry).unwrap();
 }
 
 /**
@@ -182,12 +183,15 @@ fn update_username<R: BufRead, W: Write>(
     store: &mut PasswordStore,
     service: &str,
     entry: PasswordEntry
-) -> Result<(), &'static str> {
+) {
     let username = read_terminal_input(reader, writer, Some("Enter new username: "));
     let password = entry.password.to_owned();
     let entry = PasswordEntry::new(service.to_owned(), username, password);
-    store.update_entry(entry);
-    Ok(())
+    let result = store.update_entry(entry);
+
+    if let Err(err) = result {
+        println!("Error: {}", err);
+    }
 }
 
 /**
@@ -198,21 +202,20 @@ fn update_username<R: BufRead, W: Write>(
  * @param service: &str
  * @param entry: PasswordEntry
  */
-fn update_password(
-    store: &mut PasswordStore,
-    service: &str,
-    entry: PasswordEntry
-) -> Result<(), &'static str> {
+fn update_password(store: &mut PasswordStore, service: &str, entry: PasswordEntry) {
     let username = entry.username.to_owned();
     let password = rpassword::prompt_password("Enter new password: ").unwrap();
     let verify_password = rpassword::prompt_password("Please verify password: ").unwrap();
 
     if password == verify_password {
         let entry = PasswordEntry::new(service.to_owned(), username, password);
-        store.update_entry(entry);
-        Ok(())
+        let result = store.update_entry(entry);
+
+        if let Err(err) = result {
+            println!("Error: {}", err);
+        }
     } else {
-        Err("Unfortunately the entered passwords did not match, please try again")
+        println!("Unfortunately the entered passwords did not match, please try again");
     }
 }
 
@@ -228,7 +231,7 @@ pub fn handle_update_service<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
     store: &mut PasswordStore
-) -> Result<(), &'static str> {
+) {
     let service = read_terminal_input(
         reader,
         writer,
@@ -251,9 +254,11 @@ pub fn handle_update_service<R: BufRead, W: Write>(
             match input.as_str() {
                 "1" | "username" => update_username(reader, writer, store, &service, entry_clone),
                 "2" | "password" => update_password(store, &service, entry_clone),
-                _ => Err("Invalid command"),
-            }
+                _ => println!("Invalid command, please try again"),
+            };
         }
-        None => { Err("Could not find an entry for service") }
+        None => {
+            eprint!("Could not find an entry for service");
+        }
     }
 }

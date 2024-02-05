@@ -1,12 +1,20 @@
 use std::{
-    fs::{ self, OpenOptions, read_to_string },
+    fs::{ self, OpenOptions, File },
     collections::HashMap,
     path::PathBuf,
-    io::{ BufWriter, Write },
+    io::{ BufWriter, Write, BufReader },
 };
 
 use crate::password::PasswordEntry;
+use serde_json::{ Value, Map, json };
 
+/**
+ * Password Store
+ * The PasswordStore is responsible for managing the passwords, saving them to file and
+ * reading into memory.
+ *
+ * It exposes methods to work with password entries and the file.
+ */
 #[derive(Debug)]
 pub struct PasswordStore {
     passwords: HashMap<String, PasswordEntry>,
@@ -29,20 +37,23 @@ impl PasswordStore {
         Ok(store)
     }
 
+    /**
+     * Load passwords from file into memory
+     *
+     * The method will read the file and parse the content into a PasswordEntry object.
+     * The PasswordEntry object will then be added to the in-memory store.
+     */
     pub fn load(&mut self) {
-        let contents = fs
-            ::read_to_string(self.file_path.clone())
-            .expect("Something went wrong reading the file");
+        let file = File::open(&self.file_path).unwrap();
+        let reader = BufReader::new(file);
+        let json_obj: Map<String, Value> = serde_json::from_reader(reader).unwrap();
 
-        for line in contents.lines() {
-            let mut split = line.split_whitespace();
+        for (service, entry) in json_obj.iter() {
+            let username = entry["username"].as_str().unwrap().to_string();
+            let password = entry["password"].as_str().unwrap().to_string();
+            let password_entry = PasswordEntry::new(service.clone(), username, password);
 
-            let service = split.next().unwrap().to_string();
-            let username = split.next().unwrap().to_string();
-            let password = split.next().unwrap().to_string();
-
-            let entry = PasswordEntry::new(service, username, password);
-            self.add(entry);
+            self.add(password_entry);
         }
     }
 
@@ -64,58 +75,101 @@ impl PasswordStore {
         is_duplicate
     }
 
-    /** Saves entry to file */
-    fn save(&self, entry: PasswordEntry) -> Result<PasswordEntry, &'static str> {
+    /**
+     * Save entry to file
+     * The method will read the existing JSON file, add the new entry to the JSON object and then
+     * write the updated JSON object to the file.
+     *
+     * @param entry: PasswordEntry
+     * @return Result<PasswordEntry, &'static str>
+     */
+    fn save_entry(&self, entry: PasswordEntry) -> Result<PasswordEntry, &'static str> {
         println!("Saving entry for service: {} to file...", &entry.service);
-        let file = OpenOptions::new().write(true).append(true).open(&self.file_path).unwrap();
 
+        // Read the existing JSON file
+        let file = File::open(&self.file_path).unwrap();
+        let reader = BufReader::new(file);
+        let mut json_obj: Map<String, Value> = match serde_json::from_reader(reader) {
+            Ok(json) => json,
+            Err(_) => Map::new(), // In case the file is empty
+        };
+
+        // Add new entry to the JSON object
+        json_obj.insert(
+            entry.service.clone(),
+            json!({
+                "username": &entry.username,
+                "password": &entry.password
+            })
+        );
+
+        // Write the updated JSON object to the file
+        let file = OpenOptions::new().write(true).truncate(true).open(&self.file_path).unwrap();
         let mut writer = BufWriter::new(file);
+        let result = writer.write_all(serde_json::to_string_pretty(&json_obj).unwrap().as_bytes());
 
-        if
-            let Err(_) = writeln!(
-                writer,
-                "{} {} {}",
-                &entry.service,
-                &entry.username,
-                &entry.password
-            )
-        {
-            return Err("Couldn't write to file");
-        } else {
-            return Ok(entry);
+        match result {
+            Ok(_) => Ok(entry),
+            Err(_) => Err("Failed to save entry to file"),
         }
     }
 
-    pub fn add_and_save_entry(&mut self, entry: PasswordEntry) {
+    /**
+     * Add and save entry
+     * The method will add the entry to the in-memory store and then save the entry to the file.
+     * If the entry is successfully saved to the file, the method will print a success message.
+     * If the entry fails to save to the file, the method will print an error message.
+     *
+     * @param entry: PasswordEntry
+     * @return Result<&str, &'static str>
+     */
+    pub fn add_and_save_entry(&mut self, entry: PasswordEntry) -> Result<&str, &'static str> {
+        // Add to the in-memory store
         self.add(entry.clone());
-        let save_result = self.save(entry);
+        // Save to file
+        let save_result = self.save_entry(entry);
 
         match save_result {
-            Ok(entry) => println!("Successfully saved entry for {} to file! 🎉", &entry.service),
-            Err(_) => println!("Couldn't save entry to file"),
+            Ok(_) => Ok("Password entry was successfully saved to file"),
+            Err(err) => Err(err),
         }
     }
 
-    pub fn update_entry(&mut self, entry: PasswordEntry) {
-        let content = read_to_string(&self.file_path);
-        // let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&self.file_path);
+    /**
+     * Update entry in file
+     * The method will read the existing JSON file, update the entry with the new password and then
+     * write the updated JSON object to the file.
+     *
+     * @param entry: PasswordEntry
+     * @return Result<(), &'static str>
+     */
+    pub fn update_entry(&mut self, entry: PasswordEntry) -> Result<(), &'static str> {
+        let file = File::open(&self.file_path).unwrap();
+        let reader = BufReader::new(file);
 
-        match content {
-            Ok(content) => {
-                content
-                    .lines()
-                    .find(|line| line.contains(&entry.service))
-                    .map(|line| {
-                        // Replace the line with the new entry
-                        let new_content = content.replace(
-                            line,
-                            &format!("{} {} {}", &entry.service, &entry.username, &entry.password)
-                        );
-                        // Write the new content to the file
-                        fs::write(&self.file_path, new_content).expect("Unable to write file");
-                    });
-            }
-            Err(error) => eprintln!("Was not able to update entry.\n {}", error),
+        // Read the existing JSON file
+        let mut json_obj: Map<String, Value> = match serde_json::from_reader(reader) {
+            Ok(json) => json,
+            Err(_) => Map::new(), // In case the file is empty
+        };
+
+        // Update the JSON object with the new entry
+        json_obj.insert(
+            entry.service.clone(),
+            json!({
+                "username": &entry.username,
+                "password": &entry.password
+            })
+        );
+
+        // Write the updated JSON object to the file
+        let file = OpenOptions::new().write(true).truncate(true).open(&self.file_path).unwrap();
+        let mut writer = BufWriter::new(file);
+        let result = writer.write_all(serde_json::to_string_pretty(&json_obj).unwrap().as_bytes());
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => Err("Failed to update entry in file"),
         }
     }
 }
@@ -151,5 +205,36 @@ mod tests {
         let store = PasswordStore::new(PathBuf::from("passwords.txt")).unwrap();
 
         assert_eq!(store.get_file_path(), PathBuf::from("passwords.txt"));
+    }
+
+    #[test]
+    fn test_update_service_password() {
+        let mut store = PasswordStore::new(PathBuf::from("test_passwords.json")).unwrap();
+
+        let entry = PasswordEntry::new(
+            "service".to_string(),
+            "username".to_string(),
+            "password".to_string()
+        );
+
+        let result = store.add_and_save_entry(entry.clone());
+
+        assert_eq!(result, Ok("Password entry was successfully saved to file"));
+
+        let updated_entry = PasswordEntry::new(
+            "service".to_string(),
+            "username".to_string(),
+            "new_password".to_string()
+        );
+
+        let result = store.update_entry(updated_entry.clone());
+
+        assert_eq!(result, Ok(()));
+
+        let file_content = fs::read_to_string(store.get_file_path()).unwrap();
+        let json_obj: Map<String, Value> = serde_json::from_str(&file_content).unwrap();
+        let password = json_obj.get("service").unwrap();
+
+        assert_eq!(password["password"], "new_password");
     }
 }

@@ -7,7 +7,7 @@ use password_manager::{
         io::read_terminal_input,
         handle_add_password,
         handle_get_password,
-        handle_update_password,
+        handle_update_service,
     },
 };
 
@@ -72,7 +72,7 @@ fn run_dialog<R: BufRead, W: Write>(reader: &mut R, writer: &mut W, store: &mut 
                 handle_get_password(reader, writer, store);
             }
             "3" | "update" => {
-                handle_update_password(reader, writer, store);
+                handle_update_service(reader, writer, store);
             }
             _ => {
                 print(writer, "Invalid command");
@@ -85,7 +85,7 @@ fn initialize_application<R: BufRead, W: Write>(read: &mut R, write: &mut W) {
     print(write, "Welcome to the password manager! 👋");
 
     // Initialize the password store
-    let file_path = ["passwords.txt"].iter().collect::<PathBuf>(); // TODO: Reconsider this. Who should decide where the file is stored?
+    let file_path = PathBuf::from("passwords.json");
     let mut store = match PasswordStore::new(file_path) {
         Ok(store) => store,
         Err(err) => {
